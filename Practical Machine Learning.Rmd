@@ -1,0 +1,123 @@
+---
+title: "Practical Machine Learning"
+author: "Isometrick"
+output: html_document
+---
+
+```{r setoptions, echo=FALSE, warning=FALSE, message=FALSE}
+library(dplyr)
+library(knitr)
+library(ggplot2)
+library(caret)
+library(rattle)
+opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, cache = TRUE)
+```
+
+
+## Exploratory Data Analysis
+
+We begin by loading the training data set and testing data set.
+
+```{r load, eval=FALSE}
+URL <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+con <- url(URL)
+
+training <- read.csv(file=con, header=TRUE, sep=",")
+
+URL <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+con <- url(URL)
+
+testing <- read.csv(file=con, header=TRUE, sep=",")
+
+head(training)
+```
+
+
+A brief look at the first 6 rows reveals many columns with NAs. This hints for us to investigate the number of NAs that exist in each column.
+
+```{r nacount}
+na_count <- sapply(training, function(y) sum(length(which(is.na(y)))))
+na_count <- data.frame(na_count)
+na_count <- cbind(rownames(na_count), na_count)
+na_count
+```
+
+
+A good number of columns have 19216 NAs, which is almost all the training data set. Due to the lack of data, these variables are not useful for our prediction, and thus will be removed from the data set.
+
+```{r training2}
+training2 <- training[, colSums(is.na(training)) == 0]
+```
+
+
+Also, we note that many columns come out as blanks. So now we will investigate the number of blanks in each column.
+
+```{r blankcount}
+blank_count <- sapply(training2, function(y) sum(length(which(y==""))))
+blank_count <- data.frame(blank_count)
+blank_count <- cbind(rownames(blank_count), blank_count)
+blank_count
+```
+
+
+As expected, there are also a good number of columns with 19216 blanks. Thus, these variables will be removed from our data set.
+
+```{r training3}
+training3 <- training2[, colSums(training2=="") == 0]
+```
+
+
+In addition, the first 7 columns are information that are identifiers rather than variables, and thus will also be removed from the data set.
+
+```{r training4}
+training4 <- training3[, -c(1:7)]
+```
+
+
+Finally, we do a check to make sure that each of the variables have a good range of data points.
+
+```{r unique}
+sapply(training4, function(y) length(unique(y)))
+```
+
+
+We are comfortable with the variability of the remaining dataset, and so we will proceed with the 52 predictors remaining.
+
+
+
+## Machine Learning
+
+Before we begin with the machine learning algorithm proper, we will split the training set into a training subset and a testing subset so that we can do cross validation.
+
+```{r x-valid}
+set.seed(333)
+inTrain <- createDataPartition(y=training4$classe, p=0.7, list=FALSE)
+xtrain <- training4[inTrain,]
+xtest <- training4[-inTrain,]
+```
+
+
+Now that we have the training set for modelling, we will start on the machine learning process. In this case, we will choose to use random forest to train the dataset, and preprocess it using principal component analysis (pca). PCA will help to reduce the number of predictors, so that it will require less computation when training with random forest. To further reduce the time taken in building the model, the pre-processing options are set with pca threshold at 95%, and k value set to 25. The ntree option is set to 31, while the mtry option has been left to the default.
+
+```{r rf}
+ctrl <- trainControl(preProcOptions = list(thresh = 0.95, k = 25))
+modFit <- train(classe ~ ., data=xtrain, method="rf", ntree=31, preProcess="pca", trControl=ctrl)
+```
+
+
+After completing the training, we shall now carry out cross validation. We will use our model and predict the classe of each dataset in the xtest subset that we segmented out earlier. 
+
+```{r predict}
+pred <- predict(modFit, xtest)
+confusionMatrix(xtest$classe, pred)
+```
+
+
+As it turns out, the out of sample error is approximately 0.0336. As can be seen from the confusion matrix, the prediction is rather accurate and so we will use this model on the test set.
+
+```{r testing}
+answers <- predict(modFit, testing)
+```
+
+
+Using the script provided, this answer matrix will be submitted online for automated marking.
